@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -118,11 +117,9 @@ func (o *redhat) checkDependencies() error {
 		return nil
 
 	case "centos":
-		var majorVersion int
-		if 0 < len(o.Distro.Release) {
-			majorVersion, _ = strconv.Atoi(strings.Split(o.Distro.Release, ".")[0])
-		} else {
-			return fmt.Errorf("Not implemented yet: %s", o.Distro)
+		majorVersion, err := o.Distro.MajorVersion()
+		if err != nil {
+			return fmt.Errorf("Not implemented yet: %s, err: %s", o.Distro, err)
 		}
 
 		var name = "yum-plugin-changelog"
@@ -155,11 +152,9 @@ func (o *redhat) install() error {
 
 func (o *redhat) checkRequiredPackagesInstalled() error {
 	if o.Distro.Family == "centos" {
-		var majorVersion int
-		if 0 < len(o.Distro.Release) {
-			majorVersion, _ = strconv.Atoi(strings.Split(o.Distro.Release, ".")[0])
-		} else {
-			msg := fmt.Sprintf("Not implemented yet: %s", o.Distro)
+		majorVersion, err := o.Distro.MajorVersion()
+		if err != nil {
+			msg := fmt.Sprintf("Not implemented yet: %s, err: %s", o.Distro, err)
 			o.log.Errorf(msg)
 			return fmt.Errorf(msg)
 		}
@@ -450,17 +445,18 @@ func (o *redhat) getChangelogCVELines(rpm2changelog map[string]*string, packInfo
 
 func (o *redhat) parseAllChangelog(allChangelog string) (map[string]*string, error) {
 	var majorVersion int
-	if 0 < len(o.Distro.Release) && o.Distro.Family == "centos" {
-		majorVersion, _ = strconv.Atoi(strings.Split(o.Distro.Release, ".")[0])
-	} else {
-		return nil, fmt.Errorf("Not implemented yet: %s", o.getDistro())
+	var err error
+	if o.Distro.Family == "centos" {
+		majorVersion, err = o.Distro.MajorVersion()
+		if err != nil {
+			return nil, fmt.Errorf("Not implemented yet: %s, err: %s", o.Distro, err)
+		}
 	}
 
 	orglines := strings.Split(allChangelog, "\n")
 	tmpline := ""
 	var lines []string
 	var prev, now bool
-	var err error
 	for i := range orglines {
 		if majorVersion == 5 {
 			/* for CentOS5 (yum-util < 1.1.20) */
@@ -578,6 +574,7 @@ func (o *redhat) scanUnsecurePackagesUsingYumPluginSecurity() (models.VulnInfos,
 	}
 
 	// get advisoryID(RHSA, ALAS) - package name,version
+	pp.Println(o.Distro.Release)
 	cmd = "yum --color=never updateinfo list available --security"
 	r = o.ssh(util.PrependProxyEnv(cmd), o.sudo())
 	if !r.isSuccess() {
